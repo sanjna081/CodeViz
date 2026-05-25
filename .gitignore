@@ -1,0 +1,22 @@
+# API keys
+.env
+
+# Data files (too large for GitHub)
+data/
+
+# Results
+results/
+
+# RAG index files (large binary files)
+rag/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+codeviz_env/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
