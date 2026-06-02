@@ -1,7 +1,7 @@
 ## Solution Walkthrough
 
 ### Planner Agent
-The Planner Agent decomposes the natural language problem statement into an ordered sequence of pipeline subtasks, each enriched with metadata specifying its ML step  type and the context keys it must read and write. For this query, five subtasks are generated: handling missing values, splitting the data, normalising features, training the model, and computing evaluation metrics.
+The Planner Agent decomposes the natural language problem statement into an ordered sequence of subtasks, with metadata specifying its ML step  type and the context keys it must read and write. For this query, five subtasks are generated: handling missing values, splitting the data, normalising features, training the model, and computing evaluation metrics.
 
 ![Planner Agent Subtasks](figures/subtasks.png)
 
