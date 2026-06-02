@@ -6,7 +6,7 @@ The Planner Agent decomposes the natural language problem statement into an orde
 ![Planner Agent Subtasks](figures/subtasks.png)
 
 ### Analyzer Agent
-The Analyzer Agent routes each subtask to the appropriate execution agent based on its output type. Since this problem involves no visualization, all five tasks are dispatched to the Analytical Agent.
+The Analyzer Agent routes each subtask to the appropriate execution agent based on its output type. Since this problem involves no visualization, all five tasks are routed to the Analytical Agent.
 
 ![Analyzer Agent](figures/analyzer.png)
 
