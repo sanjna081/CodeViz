@@ -1,4 +1,4 @@
-# CodeViz: A Multi-Agent Framework for Automating Data Science Workflows
+## CodeViz: A Multi-Agent Framework for Automating Data Science Workflows
 
 CodeViz is a task-aware multi-agent framework that automates analytical and data science pipelines. Given a dataset and a plain English description of the task, CodeViz plans, generates, executes, and evaluates a complete machine learning pipeline.
 It is built with Python, LangChain, OpenRouter API, and a RAG-augmented planning system backed by FAISS vector search.
