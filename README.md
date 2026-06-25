@@ -8,7 +8,7 @@ Live demo: https://codeviz.streamlit.app/
 
 ## Flowchart
 
-![Flowchart](images/codeviz_flowchart.png)
+![Flowchart](figures/codeviz_flowchart.png)
 
 ## Solution Walkthrough
 
