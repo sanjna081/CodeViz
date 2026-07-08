@@ -1,0 +1,42 @@
+name: CodeViz CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Check imports
+      run: |
+        cd agents
+        python -c "import pandas; import numpy; import sklearn; import faiss; import sentence_transformers"
+        echo "All imports successful"
+
+    - name: Check syntax
+      run: |
+        python -m py_compile agents/main.py
+        python -m py_compile agents/planner_agent.py
+        python -m py_compile agents/analyzer_agent.py
+        python -m py_compile agents/analytical_agent.py
+        python -m py_compile agents/testing_agent.py
+        python -m py_compile agents/api.py
+        python -m py_compile agents/streamlit_app.py
+        echo "All syntax checks passed"
