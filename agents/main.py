@@ -1,11 +1,4 @@
-# main.py - VERSION 7
-# Changes from V6:
-#
-#  1. run_analysis_programmatic() accepts test_case_name and results_dir [UPDATED]:
-#     Previously used global constants TEST_CASE_NAME and RESULTS_DIR.
-#     Now accepts these as optional parameters so runner.py can pass the
-#     correct filename for each test case without modifying the config block.
-#     Defaults to the global constants so interactive main() is unchanged.
+# main.py 
 
 import os
 import sys
@@ -16,6 +9,7 @@ import datetime
 import numpy as np
 import requests
 import pandas as pd
+import mlflow
 
 from planner_agent import PlannerAgent
 from analyzer_agent import AnalyzerAgent
@@ -23,12 +17,11 @@ from analytical_agent import AnalyticalAgent
 from visualization_agent import VisualizationAgent
 from testing_agent import TestingAgent
 from dotenv import load_dotenv
-load_dotenv()
+from pathlib import Path
 
+load_dotenv(dotenv_path=Path(__file__).parent.parent / '.env')
 
-# ══════════════════════════════════════════════════════════════════════════════
 #  CONFIGURATION
-# ══════════════════════════════════════════════════════════════════════════════
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
@@ -43,9 +36,7 @@ RESULTS_DIR    = r'C:\Users\Shreekumar\codeviz\results'
 TEST_CASE_NAME = "test_case_1"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  LLM CLIENT
-# ══════════════════════════════════════════════════════════════════════════════
+#  LLM Client
 
 class _InvokeResponse:
     def __init__(self, content: str):
@@ -195,9 +186,70 @@ class LLMClient:
         print("=" * 60)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+#  MLflow tracking
+
+def _log_to_mlflow(output: dict, llm: LLMClient,
+                   pipeline_wall_time: float,
+                   test_case_name: str,
+                   dataset_path: str,
+                   use_rag: bool):
+    """Log pipeline run metrics and parameters to MLflow."""
+    try:
+        mlflow.set_experiment("CodeViz")
+
+        with mlflow.start_run(run_name=test_case_name):
+
+            # ── Parameters ────────────────────────────────────────────────────
+            mlflow.log_param("model",          llm.model)
+            mlflow.log_param("temperature",    llm.temperature)
+            mlflow.log_param("max_tokens",     llm.max_tokens)
+            mlflow.log_param("dataset",        os.path.basename(dataset_path))
+            mlflow.log_param("use_rag",        use_rag)
+            mlflow.log_param("rag_used",       output.get('planner_rag_used', False))
+            mlflow.log_param("rag_retrievals", output.get('planner_rag_retrievals', 0))
+
+            # ── Pipeline stats ────────────────────────────────────────────────
+            task_results = output.get('task_results', [])
+            total_tasks  = len(task_results)
+            successful   = sum(1 for t in task_results if t.get('ok'))
+            failed       = total_tasks - successful
+            retried      = sum(1 for t in task_results if t.get('attempts', 1) > 1)
+
+            mlflow.log_metric("total_tasks",      total_tasks)
+            mlflow.log_metric("successful_tasks", successful)
+            mlflow.log_metric("failed_tasks",     failed)
+            mlflow.log_metric("retried_tasks",    retried)
+            mlflow.log_metric("success_rate",
+                              round(successful / total_tasks, 4) if total_tasks else 0)
+
+            # ── Usage metrics ─────────────────────────────────────────────────
+            mlflow.log_metric("total_cost_usd",    llm._total_cost_usd)
+            mlflow.log_metric("wall_time_s",       round(pipeline_wall_time, 2))
+            mlflow.log_metric("llm_latency_s",     round(llm._total_latency, 2))
+            mlflow.log_metric("non_llm_time_s",    round(pipeline_wall_time - llm._total_latency, 2))
+            mlflow.log_metric("llm_calls",         llm._calls)
+            mlflow.log_metric("total_tokens",      llm._total_tokens)
+            mlflow.log_metric("prompt_tokens",     llm._prompt_tokens)
+            mlflow.log_metric("completion_tokens", llm._completion_tokens)
+
+            # ── Final evaluation metric ───────────────────────────────────────
+            for task in task_results:
+                if (task.get('metadata', {}).get('ml_step') == 'evaluate'
+                        and task.get('ok')):
+                    result = task.get('result', {})
+                    if isinstance(result, dict) and result:
+                        metric_name  = list(result.keys())[0]
+                        metric_value = list(result.values())[0]
+                        if isinstance(metric_value, (int, float)):
+                            mlflow.log_metric(f"eval_{metric_name}", metric_value)
+
+        print(f"[MLflow] Run logged — experiment: CodeViz, run: {test_case_name}")
+
+    except Exception as e:
+        print(f"[MLflow] Logging failed (non-fatal): {e}")
+
+
 #  JSON RESULTS SAVER
-# ══════════════════════════════════════════════════════════════════════════════
 
 def _make_serialisable(obj):
     if obj is None or isinstance(obj, (bool, str)):
@@ -320,9 +372,8 @@ def _save_results(output: dict, llm: LLMClient,
     return filepath
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  DATASET LOADING
-# ══════════════════════════════════════════════════════════════════════════════
+#  Dataset loading
+
 
 def load_dataset(file_path: str) -> pd.DataFrame:
     if not os.path.exists(file_path):
@@ -352,7 +403,7 @@ def load_dataset(file_path: str) -> pd.DataFrame:
         df.columns = df.columns.str.strip()
         stripped = [o for o, n in zip(original_cols, df.columns) if o != n]
         if stripped:
-            print(f"  ⚠ Stripped whitespace from {len(stripped)} column name(s): {stripped}")
+            print(f"Stripped whitespace from {len(stripped)} column name(s): {stripped}")
 
         print(f"\nDataset loaded successfully!")
         print(f"Shape: {df.shape}")
@@ -365,9 +416,7 @@ def load_dataset(file_path: str) -> pd.DataFrame:
         raise Exception(f"Error loading dataset: {str(e)}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
 #  USER INPUT
-# ══════════════════════════════════════════════════════════════════════════════
 
 def get_user_input():
     print("=" * 60)
@@ -420,9 +469,7 @@ def get_user_input():
     return df, problem
 
 
-# ══════════════════════════════════════════════════════════════════════════════
 #  TASK METADATA BUILDER
-# ══════════════════════════════════════════════════════════════════════════════
 
 def _build_task_metadata(assignment_data: dict) -> dict:
     return {
@@ -436,9 +483,7 @@ def _build_task_metadata(assignment_data: dict) -> dict:
     }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
 #  PRE-EXECUTION DEPENDENCY CHECK
-# ══════════════════════════════════════════════════════════════════════════════
 
 def _check_dependencies(task_desc: str, requires: list, context: dict) -> None:
     if not requires:
@@ -461,9 +506,7 @@ def _check_dependencies(task_desc: str, requires: list, context: dict) -> None:
         )
 
 
-# ══════════════════════════════════════════════════════════════════════════════
 #  TASK EXECUTION
-# ══════════════════════════════════════════════════════════════════════════════
 
 def _execute_task(agent_name: str, task_desc: str, df: pd.DataFrame,
                   task_metadata: dict, context: dict,
@@ -624,7 +667,7 @@ def run_analysis_programmatic(dataset_path: str, problem_statement: str,
                                test_case_name: str = TEST_CASE_NAME,
                                results_dir: str    = RESULTS_DIR) -> dict:
     """
-    Programmatic pipeline — called by runner.py.
+    Programmatic pipeline — called by runner.py, api.py, and streamlit_app.py.
     test_case_name controls the output filename: results_<test_case_name>.json
     results_dir controls where the file is saved.
     Both default to the global config constants when called without arguments.
@@ -763,6 +806,16 @@ def run_analysis_programmatic(dataset_path: str, problem_statement: str,
                       test_case_name=test_case_name,
                       results_dir=results_dir)
 
+        # ── MLflow tracking ───────────────────────────────────────────────────
+        _log_to_mlflow(
+            output=output,
+            llm=llm,
+            pipeline_wall_time=pipeline_wall_time,
+            test_case_name=test_case_name,
+            dataset_path=dataset_path,
+            use_rag=use_rag,
+        )
+
     except Exception as e:
         output['errors'].append({'stage': 'pipeline', 'error': str(e)})
         if verbose:
@@ -892,6 +945,16 @@ def main():
     pipeline_wall_time = time.time() - _pipeline_start
     llm.print_usage_summary(pipeline_wall_time=pipeline_wall_time)
     _save_results(output, llm, pipeline_wall_time)
+
+    # ── MLflow tracking ───────────────────────────────────────────────────────
+    _log_to_mlflow(
+        output=output,
+        llm=llm,
+        pipeline_wall_time=pipeline_wall_time,
+        test_case_name=TEST_CASE_NAME,
+        dataset_path='',
+        use_rag=True,
+    )
 
 
 if __name__ == "__main__":
